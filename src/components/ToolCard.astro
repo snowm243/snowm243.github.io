@@ -1,0 +1,109 @@
+---
+interface Props {
+  name: string;
+  desc: string;
+  url: string;
+  icon: string;
+  color: string;
+  category: string;
+  status: 'live' | 'dev';
+  order: number;
+}
+const { name, desc, url, icon, color, category, status } = Astro.props;
+---
+<a
+  class="card"
+  href={url}
+  target="_blank"
+  rel="noopener noreferrer"
+  aria-label={`打开${name}（新标签页）`}
+  data-name={name.toLowerCase()}
+  data-desc={desc.toLowerCase()}
+  data-category={category}
+>
+  <div class="card-icon" style={`background:${color}`}>{icon}</div>
+  <div class="card-title">{name}</div>
+  <div class="card-desc">{desc}</div>
+  <div class="card-footer">
+    <span class={`status ${status === 'dev' ? 'dev' : ''}`}>
+      {status === 'dev' ? '开发中' : '正常运行'}
+    </span>
+    <span class="arrow">访问 →</span>
+  </div>
+</a>
+
+<style>
+  .card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 20px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    text-decoration: none;
+    color: inherit;
+    background: var(--card-bg);
+    transition: box-shadow 0.2s, transform 0.2s, border-color 0.2s;
+  }
+  .card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+    border-color: transparent;
+  }
+  .card:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: 3px;
+  }
+  .card-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+  }
+  .card-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--blue-dark);
+  }
+  .card-desc {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    flex: 1;
+  }
+  .card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .status {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .status::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--g-green);
+  }
+  .status.dev::before {
+    background: var(--g-yellow);
+  }
+  .arrow {
+    opacity: 0;
+    transition: opacity 0.2s, transform 0.2s;
+    color: var(--blue);
+    font-size: 14px;
+  }
+  .card:hover .arrow {
+    opacity: 1;
+    transform: translateX(2px);
+  }
+</style>

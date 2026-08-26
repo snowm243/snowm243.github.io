@@ -1,0 +1,8 @@
+node_modules/
+.npm-cache/
+dist/
+.astro/
+.DS_Store
+.vscode/
+AGENTS.md
+CLAUDE.md

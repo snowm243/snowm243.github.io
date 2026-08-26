@@ -1,0 +1,22 @@
+[
+  {
+    "name": "上海工资计算器",
+    "desc": "根据工资、社保、公积金、专项附加扣除和年终奖，估算每月及全年税后收入",
+    "url": "https://snowm243.github.io/Payroll-Cal/",
+    "icon": "🧾",
+    "color": "#e8f0fe",
+    "category": "财务工具",
+    "status": "live",
+    "order": 1
+  },
+  {
+    "name": "2026 学习日历",
+    "desc": "按天记录学习完成情况，统计全年进度，并支持本地保存和数据导入导出",
+    "url": "https://snowm243.github.io/study-calendar/",
+    "icon": "🗓️",
+    "color": "#fef7e0",
+    "category": "学习工具",
+    "status": "live",
+    "order": 2
+  }
+]

@@ -1,0 +1,176 @@
+---
+import Main from '../layouts/Main.astro';
+import Sidebar from '../components/Sidebar.astro';
+import ToolCard from '../components/ToolCard.astro';
+import tools from '../data/tools.json';
+
+const sortedTools = [...tools].sort((a, b) => a.order - b.order);
+const categories = [...new Set(sortedTools.map((tool) => tool.category))];
+---
+<Main>
+  <Sidebar />
+
+  <main class="main">
+    <div class="search-wrap">
+      <div class="search-box">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
+        </svg>
+        <label class="sr-only" for="search">搜索工具</label>
+        <input id="search" type="text" placeholder="搜索工具…" autocomplete="off" />
+      </div>
+    </div>
+
+    <div class="tabs" id="tabs" aria-label="工具分类">
+      <button class="tab active" type="button" data-cat="all" aria-pressed="true">全部</button>
+      {categories.map((cat) => (
+        <button class="tab" type="button" data-cat={cat} aria-pressed="false">{cat}</button>
+      ))}
+    </div>
+
+    <div class="grid" id="grid">
+      {sortedTools.map((tool) => (
+        <ToolCard {...tool} />
+      ))}
+    </div>
+    <div class="empty" id="empty">没有找到匹配的工具</div>
+  </main>
+</Main>
+
+<style>
+  .main {
+    flex: 1;
+    padding: 40px 48px 80px;
+    max-width: 1000px;
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .search-wrap {
+    margin-bottom: 28px;
+  }
+  .search-box {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    padding: 12px 20px;
+    max-width: 480px;
+    transition: box-shadow 0.15s, border-color 0.15s, background 0.15s;
+  }
+  .search-box:focus-within {
+    box-shadow: var(--shadow-md);
+    border-color: transparent;
+    background: var(--card-bg);
+  }
+  .search-box svg {
+    width: 18px;
+    height: 18px;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+  .search-box input {
+    border: none;
+    outline: none;
+    font-size: 14px;
+    width: 100%;
+    background: transparent;
+    color: var(--text);
+    font-family: inherit;
+  }
+  .tabs {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 32px;
+  }
+  .tab {
+    font-size: 13px;
+    font-weight: 500;
+    padding: 8px 16px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .tab:hover {
+    background: var(--surface-hover);
+  }
+  .tab:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: 2px;
+  }
+  .tab.active {
+    background: var(--blue-bg);
+    border-color: var(--blue-bg);
+    color: var(--blue-dark);
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
+  }
+  .empty {
+    display: none;
+    text-align: center;
+    padding: 60px 0;
+    color: var(--text-secondary);
+    font-size: 14px;
+  }
+  @media (max-width: 860px) {
+    .main {
+      padding: 24px 20px 60px;
+    }
+  }
+</style>
+
+<script>
+  const grid = document.getElementById('grid')!;
+  const cards = Array.from(grid.querySelectorAll<HTMLElement>('.card'));
+  const empty = document.getElementById('empty')!;
+  const searchInput = document.getElementById('search') as HTMLInputElement;
+  const tabs = document.querySelectorAll<HTMLButtonElement>('.tab');
+  let activeCat = 'all';
+
+  function render() {
+    const q = searchInput.value.trim().toLowerCase();
+    let visibleCount = 0;
+
+    cards.forEach((card) => {
+      const matchCat = activeCat === 'all' || card.dataset.category === activeCat;
+      const matchQuery =
+        !q ||
+        card.dataset.name!.includes(q) ||
+        card.dataset.desc!.includes(q);
+      const visible = matchCat && matchQuery;
+      card.style.display = visible ? '' : 'none';
+      if (visible) visibleCount++;
+    });
+
+    empty.style.display = visibleCount ? 'none' : 'block';
+  }
+
+  searchInput.addEventListener('input', render);
+  tabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      tabs.forEach((t) => t.classList.remove('active'));
+      tabs.forEach((t) => t.setAttribute('aria-pressed', 'false'));
+      tab.classList.add('active');
+      tab.setAttribute('aria-pressed', 'true');
+      activeCat = tab.dataset.cat!;
+      render();
+    });
+  });
+</script>
