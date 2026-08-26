@@ -18,5 +18,16 @@
     "category": "学习工具",
     "status": "live",
     "order": 2
+  },
+  {
+    "name": "英语背单词",
+    "desc": "面向中考和高考的英语词汇学习工具，支持音标、语音、听写和错词本",
+    "url": "https://snowm243.github.io/vocabulary-talent/",
+    "icon": "📚",
+    "color": "#e8f5e9",
+    "category": "学习工具",
+    "status": "live",
+    "order": 3
   }
 ]
+
