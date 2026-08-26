@@ -28,6 +28,17 @@
     "category": "学习工具",
     "status": "live",
     "order": 3
+  },
+  {
+    "name": "雅思单词",
+    "desc": "雅思词汇学习工具，支持背诵、测试、重点标记和错词复习",
+    "url": "https://snowm243.github.io/ielts-words/",
+    "icon": "🎓",
+    "color": "#f3e8ff",
+    "category": "学习工具",
+    "status": "live",
+    "order": 4
   }
 ]
+
 
