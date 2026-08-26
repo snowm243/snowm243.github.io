@@ -38,7 +38,16 @@
     "category": "学习工具",
     "status": "live",
     "order": 4
+  },
+  {
+    "name": "我的外教",
+    "desc": "面向英语口语练习的 AI 外教工具，支持多种模型接口、情景对话和口语训练",
+    "url": "https://snowm243.github.io/ai-tutor/",
+    "icon": "🎧",
+    "color": "#eaf1fb",
+    "category": "学习工具",
+    "status": "live",
+    "order": 5
   }
 ]
-
 
