@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>考点棋盘 · 得分推演</title>
+<style>
+  :root{
+    --wood-light:#d9a86a;
+    --wood-mid:#c08e4f;
+    --wood-dark:#8a5a2b;
+    --wood-line:#5e3c1c;
+    --paper:#f4ecdc;
+    --ink:#3a2a1a;
+    --seal-red:#a3352c;
+    --seal-red-dark:#7c2620;
+    --stone-black-1:#4a4a4a;
+    --stone-black-2:#0c0c0c;
+    --stone-white-1:#fffdf7;
+    --stone-white-2:#e4ddc9;
+    --focus:#3a6ea5;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    min-height:100vh;
+    background:radial-gradient(circle at 20% 10%, #f0e4c8 0%, transparent 45%), #ece0c4;
+    font-family:"PingFang SC","Microsoft YaHei","STSong",serif;
+    color:var(--ink);
+    display:flex;
+    justify-content:center;
+    padding:32px 16px 60px;
+  }
+  .wrap{width:100%;max-width:760px;}
+  header{text-align:center;margin-bottom:22px;}
+  header h1{font-size:28px;letter-spacing:4px;margin:0 0 6px;font-weight:700;}
+  header p{margin:0;font-size:14px;color:#6b5a41;letter-spacing:1px;}
+  .scoreboard{display:flex;align-items:center;justify-content:center;gap:18px;margin:0 auto 22px;flex-wrap:wrap;}
+  .seal{
+    width:96px;height:96px;border-radius:10px;
+    background:linear-gradient(160deg,var(--seal-red),var(--seal-red-dark));
+    color:#fbe9cf;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    box-shadow:0 6px 14px rgba(0,0,0,.25), inset 0 0 0 2px rgba(255,255,255,.15);
+    transform:rotate(-2deg);transition:transform .25s ease;
+  }
+  .seal.bump{transform:rotate(-2deg) scale(1.08);}
+  .seal .num{font-size:28px;font-weight:800;line-height:1;}
+  .seal .unit{font-size:12px;margin-top:4px;letter-spacing:2px;}
+  .legend{display:flex;gap:16px;font-size:13px;color:#5a4a34;background:var(--paper);padding:10px 16px;border-radius:10px;box-shadow:inset 0 0 0 1px #d8c8a2;}
+  .legend span{display:flex;align-items:center;gap:6px;}
+  .dot{width:14px;height:14px;border-radius:50%;display:inline-block;}
+  .dot.white{background:radial-gradient(circle at 35% 30%,var(--stone-white-1),var(--stone-white-2));box-shadow:0 0 0 1px #c9bb98;}
+  .dot.black{background:radial-gradient(circle at 35% 30%,var(--stone-black-1),var(--stone-black-2));}
+  .controls{display:flex;flex-wrap:wrap;gap:10px 18px;justify-content:center;align-items:center;margin-bottom:20px;font-size:13px;color:#5a4a34;}
+  .controls label{display:flex;align-items:center;gap:6px;}
+  .controls input[type="number"]{width:52px;padding:4px 6px;border-radius:6px;border:1px solid #c9b78d;background:#fffdf7;font-size:13px;}
+  .controls input[type="range"]{width:110px;}
+  .controls button{font-family:inherit;font-size:13px;padding:7px 16px;border-radius:20px;border:1px solid var(--wood-dark);background:linear-gradient(180deg,#e8b57a,var(--wood-mid));color:#3a2a1a;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,.15);}
+  .controls button:hover{filter:brightness(1.05);}
+  .controls button:active{transform:translateY(1px);}
+  .controls button:focus-visible,.stone:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
+  .board-outer{background:linear-gradient(155deg,var(--wood-light),var(--wood-dark));border-radius:14px;padding:22px;box-shadow:0 14px 30px rgba(60,35,10,.35),inset 0 0 0 3px #b97b3f,inset 0 0 40px rgba(0,0,0,.15);position:relative;}
+  .board-outer::before{content:"";position:absolute;inset:8px;border-radius:8px;background:repeating-linear-gradient(90deg,rgba(94,60,28,.05) 0 2px,transparent 2px 26px),repeating-linear-gradient(0deg,rgba(94,60,28,.05) 0 2px,transparent 2px 26px);pointer-events:none;}
+  .grid{display:grid;gap:2px;background:var(--wood-mid);border-radius:6px;position:relative;padding:14px;}
+  .cell{aspect-ratio:1/1;position:relative;display:flex;align-items:center;justify-content:center;}
+  .cell::before,.cell::after{content:"";position:absolute;background:var(--wood-line);opacity:.55;}
+  .cell::before{left:0;right:0;top:50%;height:1px;transform:translateY(-.5px);}
+  .cell::after{top:0;bottom:0;left:50%;width:1px;transform:translateX(-.5px);}
+  .stone{width:78%;height:78%;border-radius:50%;border:none;cursor:pointer;padding:0;position:relative;z-index:2;transition:transform .12s ease,box-shadow .12s ease;}
+  .stone:hover{transform:scale(1.06);}
+  .stone:active{transform:scale(.94);}
+  .stone.white{background:radial-gradient(circle at 32% 28%,#fff 0%,var(--stone-white-1) 45%,var(--stone-white-2) 100%);box-shadow:0 2px 3px rgba(0,0,0,.35),inset 0 -2px 3px rgba(150,135,100,.4),inset 0 2px 2px rgba(255,255,255,.9);}
+  .stone.black{background:radial-gradient(circle at 32% 28%,#6a6a6a 0%,var(--stone-black-1) 35%,var(--stone-black-2) 100%);box-shadow:0 2px 3px rgba(0,0,0,.5),inset 0 -2px 3px rgba(0,0,0,.6),inset 0 2px 2px rgba(255,255,255,.25);}
+  .stone-num{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:11px;font-family:"PingFang SC","Microsoft YaHei",sans-serif;pointer-events:none;user-select:none;line-height:1;}
+  .stone.white .stone-num{color:rgba(120,115,100,.35);}
+  .stone.black .stone-num{color:rgba(210,210,210,.45);}
+  footer{text-align:center;margin-top:20px;font-size:12.5px;color:#7a6b52;line-height:1.7;}
+  @media (max-width:520px){
+    body{padding:22px 10px 40px;}
+    .board-outer{padding:10px;}
+    .grid{padding:6px;gap:1px;}
+    .stone-num{font-size:9px;}
+  }
+  @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important;}}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header>
+    <h1>考 点 棋 盘</h1>
+    <p>每颗棋子代表试卷上的一个考点 · 白子 = 已掌握 · 黑子 = 未掌握</p>
+  </header>
+  <div class="scoreboard">
+    <div class="seal" id="seal" aria-live="polite"><div class="num" id="scoreNum">90</div><div class="unit">分</div></div>
+    <div class="legend">
+      <span><i class="dot white"></i>已掌握 <b id="whiteCount">0</b></span>
+      <span><i class="dot black"></i>未掌握 <b id="blackCount">0</b></span>
+    </div>
+  </div>
+  <div class="controls">
+    <label>行数 <input type="number" id="rows" value="10" min="4" max="15"></label>
+    <label>列数 <input type="number" id="cols" value="10" min="4" max="15"></label>
+    <label>初始未掌握比例 <input type="range" id="ratio" min="0" max="60" value="15"><span id="ratioLabel">15%</span></label>
+    <button id="regen" type="button">重新出题（随机分布）</button>
+    <button id="clearAll" type="button">全部设为已掌握</button>
+  </div>
+  <div class="board-outer"><div class="grid" id="grid"></div></div>
+  <footer>点击任意棋子，可在「已掌握（白）」与「未掌握（黑）」之间切换。<br>棋盘上方的印章分数，会随着黑子变白子实时上升 —— 这就是「把不会的一道道点亮」的过程。</footer>
+</main>
+<script>
+const gridEl=document.getElementById('grid');
+const rowsInput=document.getElementById('rows');
+const colsInput=document.getElementById('cols');
+const ratioInput=document.getElementById('ratio');
+const ratioLabel=document.getElementById('ratioLabel');
+const scoreNum=document.getElementById('scoreNum');
+const whiteCountEl=document.getElementById('whiteCount');
+const blackCountEl=document.getElementById('blackCount');
+const seal=document.getElementById('seal');
+let state=[];
+let bumpTimer;
+
+function clampDimension(input){
+  const value=Math.max(4,Math.min(15,Number.parseInt(input.value,10)||10));
+  input.value=value;
+  return value;
+}
+
+function updateScore(animate=true){
+  const whiteCount=state.filter(color=>color==='white').length;
+  const blackCount=state.length-whiteCount;
+  scoreNum.textContent=state.length?Math.round(whiteCount/state.length*100):0;
+  whiteCountEl.textContent=whiteCount;
+  blackCountEl.textContent=blackCount;
+  if(!animate)return;
+  clearTimeout(bumpTimer);
+  seal.classList.remove('bump');
+  requestAnimationFrame(()=>{
+    seal.classList.add('bump');
+    bumpTimer=setTimeout(()=>seal.classList.remove('bump'),150);
+  });
+}
+
+function setStoneState(button,index,color){
+  state[index]=color;
+  button.className='stone '+color;
+  button.setAttribute('aria-label',`考点 ${index+1}，${color==='white'?'已掌握':'未掌握'}，点击切换`);
+}
+
+function buildBoard(randomize=true){
+  const rows=clampDimension(rowsInput);
+  const cols=clampDimension(colsInput);
+  const total=rows*cols;
+  const blackRatio=Number.parseInt(ratioInput.value,10)/100;
+  gridEl.style.gridTemplateColumns=`repeat(${cols}, 1fr)`;
+  gridEl.replaceChildren();
+  state=new Array(total).fill('white');
+  if(randomize){
+    const pool=Array.from({length:total},(_,index)=>index);
+    for(let i=0,blackCount=Math.round(total*blackRatio);i<blackCount;i++){
+      const poolIndex=Math.floor(Math.random()*pool.length);
+      state[pool.splice(poolIndex,1)[0]]='black';
+    }
+  }
+  const fragment=document.createDocumentFragment();
+  state.forEach((color,index)=>{
+    const cell=document.createElement('div');
+    cell.className='cell';
+    const button=document.createElement('button');
+    button.type='button';
+    button.innerHTML=`<span class="stone-num">${index+1}</span>`;
+    setStoneState(button,index,color);
+    button.addEventListener('click',()=>{
+      setStoneState(button,index,state[index]==='white'?'black':'white');
+      updateScore();
+    });
+    cell.appendChild(button);
+    fragment.appendChild(cell);
+  });
+  gridEl.appendChild(fragment);
+  updateScore(false);
+}
+
+ratioInput.addEventListener('input',()=>{ratioLabel.textContent=ratioInput.value+'%';});
+document.getElementById('regen').addEventListener('click',()=>buildBoard());
+document.getElementById('clearAll').addEventListener('click',()=>{
+  document.querySelectorAll('.stone').forEach((button,index)=>setStoneState(button,index,'white'));
+  updateScore();
+});
+rowsInput.addEventListener('change',()=>buildBoard());
+colsInput.addEventListener('change',()=>buildBoard());
+buildBoard();
+</script>
+</body>
+</html>
