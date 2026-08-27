@@ -48,6 +48,15 @@
     "category": "学习工具",
     "status": "live",
     "order": 5
+  },
+  {
+    "name": "走遍美国",
+    "desc": "Family Album, U.S.A. 全 26 课中英对照阅读，支持英文词组高亮和重点句型学习",
+    "url": "https://snowm243.github.io/family-album-usa/",
+    "icon": "📖",
+    "color": "#eef8f2",
+    "category": "学习工具",
+    "status": "live",
+    "order": 6
   }
 ]
-
