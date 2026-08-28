@@ -67,10 +67,6 @@ function fixture(saved) {
   const tabs = ['all', 'learn'].map(cat => new Button('tab', { cat }));
   const items = ['a', 'b', 'c'].map((id, index) => {
     const item = new Element('tool-item', { toolId: id, toolName: id });
-    const controls = new Element('sort-controls');
-    controls.append(new Button('', { move: '-1' }));
-    controls.append(new Button('', { move: '1' }));
-    item.append(controls);
     item.append(new Element('card', { name: id, desc: id, category: index ? 'learn' : 'finance' }));
     grid.append(item);
     item.rect = () => {
@@ -112,16 +108,17 @@ test('restore order and show whole-card affordance without a handle', () => {
   assert.deepEqual(ui.order(), ['c', 'a', 'b']);
   assert.equal(ui.items[0].dataset.sortable, 'true');
   assert.equal(ui.items[0].querySelector('.card').draggable, false);
-  assert.equal(ui.items[0].querySelector('.sort-controls').hidden, false);
+  assert.equal(ui.items[0].querySelector('.sort-controls'), null);
+  assert.doesNotMatch(source, /data-move|sort-controls|点箭头/);
   assert.equal(ui.items[0].querySelector('.drag-handle'), null);
 });
-test('buttons and Alt+arrow keyboard moves still save and preserve focus', () => {
+test('Alt+arrow keyboard moves still save and preserve focus without visible buttons', () => {
   const ui = fixture();
-  const forward = ui.items[0].querySelectorAll('[data-move]')[1];
-  fire(forward, 'click');
+  const card = ui.items[0].querySelector('.card');
+  fire(card, 'keydown', { key: 'ArrowRight', altKey: true });
   assert.deepEqual(ui.order(), ['b', 'a', 'c']);
-  assert.equal(forward.focused, true);
-  fire(ui.items[0].querySelector('.card'), 'keydown', { key: 'ArrowRight', altKey: true });
+  assert.equal(card.focused, true);
+  fire(card, 'keydown', { key: 'ArrowRight', altKey: true });
   assert.deepEqual(ui.order(), ['b', 'c', 'a']);
   assert.deepEqual(helpers.readOrder(ui.storage), ['b', 'c', 'a']);
 });

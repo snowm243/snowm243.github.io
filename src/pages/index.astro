@@ -36,10 +36,6 @@ const categories = [...new Set(sortedTools.map((tool) => tool.category))];
     <div class="grid" id="grid">
       {sortedTools.map((tool) => (
         <div class="tool-item" data-tool-id={tool.url} data-tool-name={tool.name}>
-          <div class="sort-controls" hidden>
-            <button type="button" data-move="-1" aria-label={`前移：${tool.name}`} title="前移一位">←</button>
-            <button type="button" data-move="1" aria-label={`后移：${tool.name}`} title="后移一位">→</button>
-          </div>
           <ToolCard {...tool} />
         </div>
       ))}
@@ -145,8 +141,8 @@ const categories = [...new Set(sortedTools.map((tool) => tool.category))];
     font-size: 12px;
   }
   .sort-toolbar p { margin: 0; line-height: 1.6; }
-  .sort-toolbar[hidden], .sort-controls[hidden] { display: none; }
-  .sort-toolbar button, .sort-controls button {
+  .sort-toolbar[hidden] { display: none; }
+  .sort-toolbar button {
     font: inherit;
     color: var(--text-secondary);
     background: var(--card-bg);
@@ -155,18 +151,8 @@ const categories = [...new Set(sortedTools.map((tool) => tool.category))];
     cursor: pointer;
   }
   .sort-toolbar button { padding: 7px 12px; white-space: nowrap; }
-  .sort-controls {
-    position: absolute;
-    top: 20px;
-    right: 12px;
-    display: flex;
-    gap: 3px;
-    z-index: 1;
-  }
-  .sort-controls button { width: 28px; height: 30px; padding: 0; font-size: 16px; }
-  .sort-controls button:disabled { opacity: 0.35; cursor: not-allowed; }
-  .sort-toolbar button:hover, .sort-controls button:not(:disabled):hover { background: var(--blue-bg); }
-  .sort-toolbar button:focus-visible, .sort-controls button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+  .sort-toolbar button:hover { background: var(--blue-bg); }
+  .sort-toolbar button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
   .tool-item { position: relative; display: flex; min-width: 0; border-radius: var(--radius); }
   .tool-item :global(.card) { flex: 1; min-width: 0; }
   .tool-item[data-sortable="true"] :global(.card) { cursor: grab; user-select: none; }
@@ -183,13 +169,7 @@ const categories = [...new Set(sortedTools.map((tool) => tool.category))];
     transform: rotate(-1deg) scale(1.02);
   }
   .sort-ghost :global(.card) { border-color: var(--blue); transform: none; }
-  .tool-item:has(.sort-controls:hover) :global(.card),
   .tool-item.dragging :global(.card) { transform: none; }
-  @media (pointer: coarse) {
-    .sort-controls { position: static; justify-content: flex-end; padding: 4px; }
-    .sort-controls button { width: 44px; height: 44px; }
-    .tool-item { flex-direction: column; }
-  }
   .empty {
     display: none;
     text-align: center;
@@ -238,15 +218,10 @@ const categories = [...new Set(sortedTools.map((tool) => tool.category))];
   function updateControls() {
     const enabled = canSort();
     help.textContent = enabled
-      ? '按住整张卡片拖动，松开自动保存；单击打开工具。也可点箭头移动，仅保存在当前浏览器。'
+      ? '按住整张卡片拖动，松开自动保存；单击打开工具。仅保存在当前浏览器。'
       : '排序暂时不可用：请切换到“全部”并清空搜索，再调整完整工具列表。';
     items.forEach((item) => {
       item.dataset.sortable = String(enabled);
-      const index = order.indexOf(item.dataset.toolId!);
-      item.querySelectorAll<HTMLButtonElement>('[data-move]').forEach((button) => {
-        const next = index + Number(button.dataset.move);
-        button.disabled = !enabled || next < 0 || next >= order.length;
-      });
     });
   }
 
@@ -265,9 +240,7 @@ const categories = [...new Set(sortedTools.map((tool) => tool.category))];
     const message = `${byId.get(id)!.dataset.toolName}已移到第 ${order.indexOf(id) + 1} 位。`;
     status.textContent = message + (saved ? '已在此浏览器保存。' : '浏览器不允许保存，刷新后会恢复。');
     if (!saved) help.textContent = '排序仅本次有效：当前浏览器不允许保存。';
-    const focusTarget = focus instanceof HTMLButtonElement && focus.disabled
-      ? byId.get(id)!.querySelector<HTMLElement>('.card')! : focus;
-    focusTarget?.focus({ preventScroll: true });
+    focus?.focus({ preventScroll: true });
   }
 
   function endDrag() {
@@ -331,7 +304,6 @@ const categories = [...new Set(sortedTools.map((tool) => tool.category))];
     ghost.classList.add('sort-ghost');
     ghost.setAttribute('aria-hidden', 'true');
     ghost.inert = true;
-    ghost.querySelector<HTMLElement>('.sort-controls')!.hidden = true;
     ghost.style.width = `${rect.width}px`;
     ghost.style.height = `${rect.height}px`;
     ghost.style.left = `${rect.left}px`;
@@ -358,14 +330,13 @@ const categories = [...new Set(sortedTools.map((tool) => tool.category))];
 
   items.forEach((item) => {
     const id = item.dataset.toolId!;
-    item.querySelector<HTMLElement>('.sort-controls')!.hidden = false;
     const card = item.querySelector<HTMLAnchorElement>('.card')!;
     card.draggable = false;
     card.setAttribute('aria-describedby', 'sort-help');
     card.title = '单击打开；按住整张卡片拖动排序；Alt + 方向键移动';
     card.addEventListener('dragstart', (event) => event.preventDefault());
     card.addEventListener('pointerdown', (event) => {
-      // Touch scrolling remains native; mobile users can use the existing arrow buttons.
+      // Leave touch scrolling native; whole-card dragging uses a mouse or pen.
       if (!canSort() || event.button !== 0 || !event.isPrimary || event.pointerType === 'touch') return;
       if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
       cancelDrag();
@@ -377,9 +348,6 @@ const categories = [...new Set(sortedTools.map((tool) => tool.category))];
       const delta = ['ArrowLeft', 'ArrowUp'].includes(event.key) ? -1
         : ['ArrowRight', 'ArrowDown'].includes(event.key) ? 1 : 0;
       if (delta) { event.preventDefault(); move(id, order.indexOf(id) + delta, card); }
-    });
-    item.querySelectorAll<HTMLButtonElement>('[data-move]').forEach((button) => {
-      button.addEventListener('click', () => move(id, order.indexOf(id) + Number(button.dataset.move), button));
     });
   });
 
