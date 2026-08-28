@@ -68,5 +68,15 @@
     "category": "学习工具",
     "status": "live",
     "order": 7
+  },
+  {
+    "name": "外语系-阶梯教室自习室",
+    "desc": "每日学习任务清单与番茄钟，记录完成时间和专注用时，支持历史查询及数据导入导出",
+    "url": "https://snowm243.github.io/study-room/",
+    "icon": "📝",
+    "color": "#e8f0fe",
+    "category": "学习工具",
+    "status": "live",
+    "order": 8
   }
 ]
