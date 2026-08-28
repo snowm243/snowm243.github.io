@@ -8,14 +8,14 @@ import * as helpers from '../src/lib/tool-order.mjs';
 
 const source = readFileSync(new URL('../src/pages/index.astro', import.meta.url), 'utf8');
 const script = source.match(/<script>([\s\S]*?)<\/script>/)[1]
-  .replace(/import \{[^}]+\} from '[^']+';/, 'const { mergeOrder, moveItem, readOrder, saveOrder, clearOrder } = helpers;');
+  .replace(/import \{[^}]+\} from '[^']+';/, 'const { mergeOrder, moveItem, getDropIndex, readOrder, saveOrder, clearOrder } = helpers;');
 const code = transformSync(script, { loader: 'ts' }).code;
 
 class Element extends EventTarget {
   constructor(classes = '', dataset = {}) {
     super();
-    const values = new Set(classes.split(' ').filter(Boolean));
-    this.classList = { add: (...xs) => xs.forEach(x => values.add(x)), remove: (...xs) => xs.forEach(x => values.delete(x)), contains: x => values.has(x) };
+    this.classes = new Set(classes.split(' ').filter(Boolean));
+    this.classList = { add: (...xs) => xs.forEach(x => this.classes.add(x)), remove: (...xs) => xs.forEach(x => this.classes.delete(x)), contains: x => this.classes.has(x) };
     this.dataset = dataset;
     this.children = [];
     this.style = {};
@@ -23,21 +23,31 @@ class Element extends EventTarget {
     this.value = '';
   }
   append(child) {
-    if (child.parent) child.parent.children.splice(child.parent.children.indexOf(child), 1);
+    child.remove();
     child.parent = this;
     this.children.push(child);
   }
-  matches(selector) {
-    return selector === '[data-move]' ? 'move' in this.dataset : this.classList.contains(selector.slice(1));
+  remove() {
+    if (this.parent) this.parent.children.splice(this.parent.children.indexOf(this), 1);
+    this.parent = null;
   }
+  cloneNode(deep) {
+    const clone = new Element([...this.classes].join(' '), { ...this.dataset });
+    if (deep) this.children.forEach(c => clone.append(c.cloneNode(true)));
+    return clone;
+  }
+  matches(selector) { return selector === '[data-move]' ? 'move' in this.dataset : this.classList.contains(selector.slice(1)); }
   querySelectorAll(selector) {
     return this.children.flatMap(child => [...(child.matches(selector) ? [child] : []), ...child.querySelectorAll(selector)]);
   }
   querySelector(selector) { return this.querySelectorAll(selector)[0] ?? null; }
   closest(selector) { return this.matches(selector) ? this : this.parent?.closest(selector); }
-  contains(child) { return child === this || this.children.some(c => c.contains(child)); }
   setAttribute(key, value) { this[key] = value; }
   focus() { this.focused = true; }
+  hasPointerCapture(id) { return this.captureId === id; }
+  setPointerCapture(id) { this.captureId = id; }
+  releasePointerCapture() { this.captureId = undefined; }
+  getBoundingClientRect() { return this.rect?.() ?? { left: 0, top: 0, width: 200, height: 180 }; }
 }
 class Button extends Element { disabled = false; }
 
@@ -49,77 +59,168 @@ function fire(target, type, data = {}) {
 }
 function fixture(saved) {
   const elements = Object.fromEntries(['grid', 'reset-order', 'sort-help', 'sort-status', 'empty', 'search', 'sort-toolbar'].map(id => [id, new Element()]));
-  const grid = elements.grid;
+  const grid = elements.grid, body = new Element();
+  const win = new EventTarget();
+  Object.assign(win, { scrollX: 0, scrollY: 0, innerHeight: 800 });
+  win.scrollBy = (_, dy) => { win.scrollY = Math.max(0, Math.min(1000, win.scrollY + dy)); };
+  grid.rect = () => ({ left: 0, right: 420, top: 100 - win.scrollY, bottom: 480 - win.scrollY, width: 420, height: 380 });
   const tabs = ['all', 'learn'].map(cat => new Button('tab', { cat }));
   const items = ['a', 'b', 'c'].map((id, index) => {
     const item = new Element('tool-item', { toolId: id, toolName: id });
     const controls = new Element('sort-controls');
-    controls.append(new Button('drag-handle'));
     controls.append(new Button('', { move: '-1' }));
     controls.append(new Button('', { move: '1' }));
     item.append(controls);
     item.append(new Element('card', { name: id, desc: id, category: index ? 'learn' : 'finance' }));
     grid.append(item);
+    item.rect = () => {
+      const slot = item.style.order ? Number(item.style.order) : grid.children.indexOf(item);
+      return { left: (slot % 2) * 220, top: 100 + Math.floor(slot / 2) * 200 - win.scrollY, width: 200, height: 180 };
+    };
     return item;
   });
   const values = new Map([['theme', 'mint']]);
   if (saved) values.set(helpers.ORDER_KEY, JSON.stringify(saved));
   const storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) };
+  win.localStorage = storage;
+  const frames = new Map();
+  let frameId = 0;
   runInNewContext(code, {
-    document: { getElementById: id => elements[id], querySelectorAll: () => tabs },
-    window: { localStorage: storage }, helpers, Node: Element, HTMLButtonElement: Button,
+    document: { body, getElementById: id => elements[id], querySelectorAll: () => tabs },
+    window: win, helpers, HTMLButtonElement: Button,
+    requestAnimationFrame: callback => { frames.set(++frameId, callback); return frameId; },
+    cancelAnimationFrame: id => frames.delete(id),
   });
-  return { elements, items, tabs, storage, order: () => grid.children.map(item => item.dataset.toolId) };
+  const pointer = (target, type, x, y, extra = {}) => fire(target, type, {
+    button: 0, isPrimary: true, pointerId: 1, pointerType: 'mouse', clientX: x, clientY: y, ...extra,
+  });
+  const down = (index = 0, extra = {}) => {
+    const rect = items[index].getBoundingClientRect();
+    pointer(grid, 'pointerdown', rect.left + 50, rect.top + 50, extra);
+    return pointer(items[index].querySelector('.card'), 'pointerdown', rect.left + 50, rect.top + 50, extra);
+  };
+  return { elements, grid, items, tabs, storage, body, win, frames, pointer, down,
+    move: (x, y, extra) => pointer(win, 'pointermove', x, y, extra),
+    up: (x, y, extra) => pointer(win, 'pointerup', x, y, extra),
+    order: () => grid.children.map(item => item.dataset.toolId),
+    layout: () => [...grid.children].sort((a, b) => Number(a.style.order) - Number(b.style.order)).map(item => item.dataset.toolId),
+  };
 }
 
-test('page restores saved order and enables controls without touching links', () => {
+test('restore order and show whole-card affordance without a handle', () => {
   const ui = fixture(['c', 'a', 'b']);
   assert.deepEqual(ui.order(), ['c', 'a', 'b']);
-  assert.equal(ui.elements['sort-toolbar'].hidden, false);
+  assert.equal(ui.items[0].dataset.sortable, 'true');
   assert.equal(ui.items[0].querySelector('.card').draggable, false);
   assert.equal(ui.items[0].querySelector('.sort-controls').hidden, false);
+  assert.equal(ui.items[0].querySelector('.drag-handle'), null);
 });
-test('buttons and keyboard reorder, save, and preserve focus', () => {
+test('buttons and Alt+arrow keyboard moves still save and preserve focus', () => {
   const ui = fixture();
   const forward = ui.items[0].querySelectorAll('[data-move]')[1];
   fire(forward, 'click');
   assert.deepEqual(ui.order(), ['b', 'a', 'c']);
   assert.equal(forward.focused, true);
-  const handle = ui.items[0].querySelector('.drag-handle');
-  fire(handle, 'keydown', { key: 'ArrowRight' });
+  fire(ui.items[0].querySelector('.card'), 'keydown', { key: 'ArrowRight', altKey: true });
   assert.deepEqual(ui.order(), ['b', 'c', 'a']);
   assert.deepEqual(helpers.readOrder(ui.storage), ['b', 'c', 'a']);
 });
-test('internal drag shows target, commits on drop, and clears drag state', () => {
+test('click and sub-threshold jitter keep navigation and order unchanged', () => {
   const ui = fixture();
-  const transfer = { setData() {}, setDragImage() {} };
-  fire(ui.items[0].querySelector('.drag-handle'), 'dragstart', { dataTransfer: transfer });
-  const over = fire(ui.items[2], 'dragover', { dataTransfer: transfer });
-  assert.equal(over.defaultPrevented, true);
-  assert.equal(ui.items[2].classList.contains('drop-target'), true);
+  ui.down();
+  ui.move(53, 152);
+  ui.up(53, 152);
+  assert.equal(ui.body.children.length, 0);
   assert.deepEqual(ui.order(), ['a', 'b', 'c']);
-  fire(ui.items[2], 'drop');
-  assert.deepEqual(ui.order(), ['b', 'c', 'a']);
-  assert.equal(ui.items[0].classList.contains('dragging'), false);
-  assert.equal(ui.items[2].classList.contains('drop-target'), false);
-  assert.deepEqual(helpers.readOrder(ui.storage), ['b', 'c', 'a']);
+  assert.equal(fire(ui.grid, 'click').defaultPrevented, false);
 });
-test('canceled drags and external drops cannot change order', () => {
+test('whole card follows mouse, previews live, and saves ONLY on release', () => {
   const ui = fixture();
-  fire(ui.items[2], 'drop');
-  const handle = ui.items[0].querySelector('.drag-handle');
-  fire(handle, 'dragstart', { dataTransfer: { setData() {}, setDragImage() {} } });
-  fire(handle, 'dragend');
-  fire(ui.items[2], 'drop');
+  ui.down();
+  ui.move(100, 390);
+  assert.equal(ui.body.children.length, 1);
+  const ghost = ui.body.children[0];
+  assert.equal(ghost.inert, true);
+  assert.equal(ghost['aria-hidden'], 'true');
+  assert.equal(ghost.style.left, '50px');
+  assert.equal(ghost.style.top, '340px');
+  assert.deepEqual(ui.layout(), ['b', 'c', 'a']);
   assert.deepEqual(ui.order(), ['a', 'b', 'c']);
   assert.equal(ui.storage.getItem(helpers.ORDER_KEY), null);
+  assert.equal(ui.grid.hasPointerCapture(1), true);
+  ui.up(100, 390);
+  assert.deepEqual(ui.order(), ['b', 'c', 'a']);
+  assert.deepEqual(helpers.readOrder(ui.storage), ['b', 'c', 'a']);
+  assert.equal(ui.body.children.length, 0);
+  assert.equal(ui.frames.size, 0);
+  assert.equal(ui.grid.hasPointerCapture(1), false);
+  assert.equal(fire(ui.grid, 'click').defaultPrevented, true);
+  ui.down();
+  ui.up(50, 350);
+  assert.equal(fire(ui.grid, 'click').defaultPrevented, false);
 });
-test('search/category filtering disables reorder and preserves full saved list', () => {
+test('release location, not last hover target, decides final slot', () => {
+  const ui = fixture();
+  ui.down();
+  ui.move(100, 390);
+  ui.up(320, 190);
+  assert.deepEqual(ui.order(), ['b', 'a', 'c']);
+});
+test('repeated stationary pointer events never oscillate or reorder the DOM', () => {
+  const ui = fixture();
+  ui.down();
+  for (let i = 0; i < 8; i++) ui.move(320, 190);
+  assert.deepEqual(ui.layout(), ['b', 'a', 'c']);
+  assert.deepEqual(ui.order(), ['a', 'b', 'c']);
+});
+test('grid gaps and the empty last-row area accept drops', () => {
+  const ui = fixture();
+  ui.down();
+  ui.move(210, 190);
+  ui.up(410, 390);
+  assert.deepEqual(ui.order(), ['b', 'c', 'a']);
+});
+test('cancel, Escape, outside release, lost capture, blur and resize restore original layout', () => {
+  const cancellations = [
+    ui => ui.up(600, 390),
+    ui => fire(ui.win, 'keydown', { key: 'Escape' }),
+    ui => fire(ui.win, 'pointercancel', { pointerId: 1 }),
+    ui => fire(ui.grid, 'lostpointercapture', { pointerId: 1 }),
+    ui => fire(ui.win, 'blur'), ui => fire(ui.win, 'resize'),
+  ];
+  for (const cancel of cancellations) {
+    const ui = fixture();
+    ui.down();
+    ui.move(100, 390);
+    cancel(ui);
+    assert.deepEqual(ui.order(), ['a', 'b', 'c']);
+    assert.ok(ui.items.every(item => item.style.order === ''));
+    assert.equal(ui.storage.getItem(helpers.ORDER_KEY), null);
+    assert.equal(ui.body.children.length, 0);
+    assert.equal(ui.frames.size, 0);
+  }
+});
+test('touch, modified clicks, non-primary buttons and different pointers do not reorder', () => {
+  for (const extra of [{ pointerType: 'touch' }, { ctrlKey: true }, { metaKey: true }, { button: 2 }, { isPrimary: false }]) {
+    const ui = fixture();
+    ui.down(0, extra);
+    ui.move(100, 390);
+    ui.up(100, 390);
+    assert.deepEqual(ui.order(), ['a', 'b', 'c']);
+  }
+  const ui = fixture();
+  ui.down();
+  ui.move(100, 390, { pointerId: 2 });
+  assert.equal(ui.body.children.length, 0);
+});
+test('search/category filtering disables dragging and preserves full order', () => {
   const ui = fixture(['c', 'a', 'b']);
   fire(ui.tabs[1], 'click');
   assert.equal(ui.items[0].style.display, 'none');
-  assert.equal(ui.items[1].querySelector('.drag-handle').disabled, true);
-  fire(ui.items[1].querySelector('.drag-handle'), 'keydown', { key: 'ArrowLeft' });
+  assert.equal(ui.items[1].dataset.sortable, 'false');
+  ui.down(1);
+  ui.move(100, 390);
+  ui.up(100, 390);
   assert.deepEqual(ui.order(), ['c', 'a', 'b']);
   fire(ui.tabs[0], 'click');
   ui.elements.search.value = 'not found';
@@ -128,10 +229,19 @@ test('search/category filtering disables reorder and preserves full saved list',
   ui.elements.search.value = '';
   fire(ui.elements.search, 'input');
   assert.equal(ui.items[0].style.display, '');
-  assert.equal(ui.items[0].querySelector('.drag-handle').disabled, false);
-  assert.deepEqual(ui.order(), ['c', 'a', 'b']);
+  assert.equal(ui.items[0].dataset.sortable, 'true');
 });
-test('reset restores default order, clears only preference, and announces result', () => {
+test('scrolling during a drag uses document coordinates, and cleanup stops autoscroll', () => {
+  const ui = fixture();
+  ui.down();
+  ui.move(320, 190);
+  ui.win.scrollY = 100;
+  fire(ui.win, 'scroll');
+  ui.up(100, 290);
+  assert.deepEqual(ui.order(), ['b', 'c', 'a']);
+  assert.equal(ui.frames.size, 0);
+});
+test('reset restores default, clears only preference, and announces result', () => {
   const ui = fixture(['c', 'b', 'a']);
   fire(ui.elements['reset-order'], 'click');
   assert.deepEqual(ui.order(), ['a', 'b', 'c']);

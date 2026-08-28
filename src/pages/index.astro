@@ -29,7 +29,7 @@ const categories = [...new Set(sortedTools.map((tool) => tool.category))];
     </div>
 
     <div class="sort-toolbar" id="sort-toolbar" hidden>
-      <p id="sort-help">拖动卡片右上角 ⠿ 排序，也可点箭头移动。仅保存在当前浏览器。</p>
+      <p id="sort-help">按住整张卡片拖动，松开自动保存；单击打开工具。仅保存在当前浏览器。</p>
       <button type="button" id="reset-order">恢复默认排序</button>
     </div>
     <p class="sr-only" id="sort-status" role="status" aria-live="polite" aria-atomic="true"></p>
@@ -37,7 +37,6 @@ const categories = [...new Set(sortedTools.map((tool) => tool.category))];
       {sortedTools.map((tool) => (
         <div class="tool-item" data-tool-id={tool.url} data-tool-name={tool.name}>
           <div class="sort-controls" hidden>
-            <button type="button" class="drag-handle" draggable="true" aria-label={`拖动排序：${tool.name}，也可用方向键移动`} aria-describedby="sort-help" title="拖动排序；方向键也可移动">⠿</button>
             <button type="button" data-move="-1" aria-label={`前移：${tool.name}`} title="前移一位">←</button>
             <button type="button" data-move="1" aria-label={`后移：${tool.name}`} title="后移一位">→</button>
           </div>
@@ -132,6 +131,7 @@ const categories = [...new Set(sortedTools.map((tool) => tool.category))];
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    grid-auto-rows: 1fr;
     gap: 16px;
   }
   .sort-toolbar {
@@ -164,14 +164,25 @@ const categories = [...new Set(sortedTools.map((tool) => tool.category))];
     z-index: 1;
   }
   .sort-controls button { width: 28px; height: 30px; padding: 0; font-size: 16px; }
-  .sort-controls .drag-handle { cursor: grab; user-select: none; }
   .sort-controls button:disabled { opacity: 0.35; cursor: not-allowed; }
   .sort-toolbar button:hover, .sort-controls button:not(:disabled):hover { background: var(--blue-bg); }
   .sort-toolbar button:focus-visible, .sort-controls button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
   .tool-item { position: relative; display: flex; min-width: 0; border-radius: var(--radius); }
   .tool-item :global(.card) { flex: 1; min-width: 0; }
-  .tool-item.dragging { opacity: 0.45; }
-  .tool-item.drop-target { outline: 3px solid var(--blue); outline-offset: 3px; }
+  .tool-item[data-sortable="true"] :global(.card) { cursor: grab; user-select: none; }
+  .tool-item.dragging { outline: 2px dashed var(--blue); outline-offset: -2px; background: var(--blue-bg); }
+  .tool-item.dragging > * { opacity: 0.16; pointer-events: none; }
+  .grid.sorting :global(.card) { transform: none; transition: none; }
+  .tool-item.sort-ghost {
+    position: fixed;
+    z-index: 1000;
+    pointer-events: none;
+    margin: 0;
+    box-sizing: border-box;
+    box-shadow: 0 16px 36px rgb(0 0 0 / 20%);
+    transform: rotate(-1deg) scale(1.02);
+  }
+  .sort-ghost :global(.card) { border-color: var(--blue); transform: none; }
   .tool-item:has(.sort-controls:hover) :global(.card),
   .tool-item.dragging :global(.card) { transform: none; }
   @media (pointer: coarse) {
@@ -194,7 +205,7 @@ const categories = [...new Set(sortedTools.map((tool) => tool.category))];
 </style>
 
 <script>
-  import { mergeOrder, moveItem, readOrder, saveOrder, clearOrder } from '../lib/tool-order.mjs';
+  import { mergeOrder, moveItem, getDropIndex, readOrder, saveOrder, clearOrder } from '../lib/tool-order.mjs';
 
   const grid = document.getElementById('grid')!;
   const cards = Array.from(grid.querySelectorAll<HTMLElement>('.card'));
@@ -204,28 +215,34 @@ const categories = [...new Set(sortedTools.map((tool) => tool.category))];
   const resetButton = document.getElementById('reset-order') as HTMLButtonElement;
   const help = document.getElementById('sort-help')!;
   const status = document.getElementById('sort-status')!;
-  let storage: Storage | undefined;
-  try { storage = window.localStorage; } catch { /* Storage may be unavailable in private browsing. */ }
-  let order: string[] = mergeOrder(defaults, readOrder(storage));
-  let draggedId: string | null = null;
-  let dropTarget: HTMLElement | null = null;
   const empty = document.getElementById('empty')!;
   const searchInput = document.getElementById('search') as HTMLInputElement;
   const tabs = document.querySelectorAll<HTMLButtonElement>('.tab');
+  let storage: Storage | undefined;
+  try { storage = window.localStorage; } catch { /* A blocked store must not break navigation. */ }
+  let order: string[] = mergeOrder(defaults, readOrder(storage));
   let activeCat = 'all';
+
+  type Slot = { left: number; top: number; width: number; height: number };
+  let pending: { id: string; pointerId: number; x: number; y: number } | null = null;
+  let draggedId: string | null = null;
+  let ghost: HTMLElement | null = null;
+  let slots: Slot[] = [];
+  let pointer = { x: 0, y: 0 };
+  let offset = { x: 0, y: 0 };
+  let frame = 0;
+  let suppressClick = false;
 
   function canSort() { return activeCat === 'all' && !searchInput.value.trim(); }
 
   function updateControls() {
     const enabled = canSort();
     help.textContent = enabled
-      ? '拖动卡片右上角 ⠿ 排序，也可点箭头移动。仅保存在当前浏览器。'
+      ? '按住整张卡片拖动，松开自动保存；单击打开工具。也可点箭头移动，仅保存在当前浏览器。'
       : '排序暂时不可用：请切换到“全部”并清空搜索，再调整完整工具列表。';
     items.forEach((item) => {
+      item.dataset.sortable = String(enabled);
       const index = order.indexOf(item.dataset.toolId!);
-      const handle = item.querySelector<HTMLButtonElement>('.drag-handle')!;
-      handle.disabled = !enabled;
-      handle.draggable = enabled;
       item.querySelectorAll<HTMLButtonElement>('[data-move]').forEach((button) => {
         const next = index + Number(button.dataset.move);
         button.disabled = !enabled || next < 0 || next >= order.length;
@@ -248,62 +265,161 @@ const categories = [...new Set(sortedTools.map((tool) => tool.category))];
     const message = `${byId.get(id)!.dataset.toolName}已移到第 ${order.indexOf(id) + 1} 位。`;
     status.textContent = message + (saved ? '已在此浏览器保存。' : '浏览器不允许保存，刷新后会恢复。');
     if (!saved) help.textContent = '排序仅本次有效：当前浏览器不允许保存。';
-    // Appending DOM nodes can lose keyboard focus; restore it to the moved tool.
     const focusTarget = focus instanceof HTMLButtonElement && focus.disabled
-      ? byId.get(id)!.querySelector<HTMLElement>('.drag-handle')! : focus;
+      ? byId.get(id)!.querySelector<HTMLElement>('.card')! : focus;
     focusTarget?.focus({ preventScroll: true });
   }
 
   function endDrag() {
-    items.forEach((item) => item.classList.remove('dragging', 'drop-target'));
+    const pointerId = pending?.pointerId;
+    pending = null;
     draggedId = null;
-    dropTarget = null;
+    slots = [];
+    cancelAnimationFrame(frame);
+    ghost?.remove();
+    ghost = null;
+    items.forEach((item) => {
+      item.classList.remove('dragging');
+      item.style.order = '';
+    });
+    grid.classList.remove('sorting');
+    if (pointerId !== undefined && grid.hasPointerCapture(pointerId)) grid.releasePointerCapture(pointerId);
   }
+
+  function cancelDrag() {
+    const wasDragging = !!draggedId;
+    endDrag();
+    if (wasDragging) status.textContent = '已取消移动，顺序未改变。';
+  }
+
+  function previewAt(x: number, y: number) {
+    if (!draggedId || !ghost) return -1;
+    pointer = { x, y };
+    ghost.style.left = `${x - offset.x}px`;
+    ghost.style.top = `${y - offset.y}px`;
+    const destination = getDropIndex(slots, x + window.scrollX, y + window.scrollY);
+    // CSS-only preview keeps the captured pointer and original DOM order intact.
+    moveItem(order, draggedId, destination).forEach((id: string, index: number) => {
+      byId.get(id)!.style.order = String(index);
+    });
+    return destination;
+  }
+
+  function autoScroll() {
+    if (!draggedId) return;
+    const bounds = grid.getBoundingClientRect();
+    const edge = 56;
+    const dy = pointer.y < edge ? -12 : pointer.y > window.innerHeight - edge ? 12 : 0;
+    if (dy && pointer.x >= bounds.left && pointer.x <= bounds.right) {
+      window.scrollBy(0, dy);
+      previewAt(pointer.x, pointer.y);
+    }
+    frame = requestAnimationFrame(autoScroll);
+  }
+
+  function beginDrag() {
+    if (!pending) return;
+    const item = byId.get(pending.id)!;
+    const rect = item.getBoundingClientRect();
+    slots = order.map((id) => {
+      const box = byId.get(id)!.getBoundingClientRect();
+      return { left: box.left + window.scrollX, top: box.top + window.scrollY, width: box.width, height: box.height };
+    });
+    offset = { x: pending.x - rect.left, y: pending.y - rect.top };
+    // Clone before applying placeholder styling. The clone cannot receive focus or clicks.
+    ghost = item.cloneNode(true) as HTMLElement;
+    ghost.classList.add('sort-ghost');
+    ghost.setAttribute('aria-hidden', 'true');
+    ghost.inert = true;
+    ghost.querySelector<HTMLElement>('.sort-controls')!.hidden = true;
+    ghost.style.width = `${rect.width}px`;
+    ghost.style.height = `${rect.height}px`;
+    ghost.style.left = `${rect.left}px`;
+    ghost.style.top = `${rect.top}px`;
+    document.body.append(ghost);
+    draggedId = pending.id;
+    suppressClick = true;
+    item.classList.add('dragging');
+    grid.classList.add('sorting');
+    grid.setPointerCapture(pending.pointerId);
+    status.textContent = '正在移动卡片，松开固定位置；按 Esc 取消。';
+    frame = requestAnimationFrame(autoScroll);
+  }
+
+  // A genuine next click should open normally; only a click synthesized by the drag is suppressed.
+  grid.addEventListener('pointerdown', () => { suppressClick = false; }, true);
+  grid.addEventListener('click', (event) => {
+    if (suppressClick) {
+      event.preventDefault();
+      event.stopPropagation();
+      suppressClick = false;
+    }
+  }, true);
 
   items.forEach((item) => {
     const id = item.dataset.toolId!;
     item.querySelector<HTMLElement>('.sort-controls')!.hidden = false;
-    item.querySelector<HTMLAnchorElement>('.card')!.draggable = false;
-    const handle = item.querySelector<HTMLButtonElement>('.drag-handle')!;
-    handle.addEventListener('dragstart', (event) => {
-      if (!canSort() || !event.dataTransfer) { event.preventDefault(); return; }
-      draggedId = id;
-      event.dataTransfer.effectAllowed = 'move';
-      event.dataTransfer.setData('text/plain', id);
-      event.dataTransfer.setDragImage(item, 30, 30);
-      item.classList.add('dragging');
+    const card = item.querySelector<HTMLAnchorElement>('.card')!;
+    card.draggable = false;
+    card.setAttribute('aria-describedby', 'sort-help');
+    card.title = '单击打开；按住整张卡片拖动排序；Alt + 方向键移动';
+    card.addEventListener('dragstart', (event) => event.preventDefault());
+    card.addEventListener('pointerdown', (event) => {
+      // Touch scrolling remains native; mobile users can use the existing arrow buttons.
+      if (!canSort() || event.button !== 0 || !event.isPrimary || event.pointerType === 'touch') return;
+      if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+      cancelDrag();
+      pending = { id, pointerId: event.pointerId, x: event.clientX, y: event.clientY };
     });
-    handle.addEventListener('dragend', endDrag);
-    handle.addEventListener('keydown', (event) => {
+    card.addEventListener('keydown', (event) => {
+      suppressClick = false;
+      if (!event.altKey) return;
       const delta = ['ArrowLeft', 'ArrowUp'].includes(event.key) ? -1
         : ['ArrowRight', 'ArrowDown'].includes(event.key) ? 1 : 0;
-      if (delta) { event.preventDefault(); move(id, order.indexOf(id) + delta, handle); }
-      if (event.key === 'Escape') endDrag();
-    });
-    item.addEventListener('dragover', (event) => {
-      if (!draggedId || !canSort()) return;
-      event.preventDefault();
-      if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
-      dropTarget?.classList.remove('drop-target');
-      dropTarget = item;
-      if (id !== draggedId) item.classList.add('drop-target');
-    });
-    item.addEventListener('dragleave', (event) => {
-      if (!(event.relatedTarget instanceof Node) || !item.contains(event.relatedTarget)) {
-        item.classList.remove('drop-target');
-      }
-    });
-    item.addEventListener('drop', (event) => {
-      if (!draggedId || !canSort()) return;
-      event.preventDefault();
-      const source = draggedId;
-      endDrag();
-      move(source, order.indexOf(id), byId.get(source)!.querySelector<HTMLElement>('.drag-handle')!);
+      if (delta) { event.preventDefault(); move(id, order.indexOf(id) + delta, card); }
     });
     item.querySelectorAll<HTMLButtonElement>('[data-move]').forEach((button) => {
       button.addEventListener('click', () => move(id, order.indexOf(id) + Number(button.dataset.move), button));
     });
   });
+
+  window.addEventListener('pointermove', (event) => {
+    if (!pending || event.pointerId !== pending.pointerId) return;
+    if (!canSort()) { cancelDrag(); return; }
+    if (!draggedId) {
+      if (Math.hypot(event.clientX - pending.x, event.clientY - pending.y) < 6) return;
+      beginDrag();
+    }
+    event.preventDefault();
+    previewAt(event.clientX, event.clientY);
+  }, { passive: false });
+
+  window.addEventListener('pointerup', (event) => {
+    if (!pending || event.pointerId !== pending.pointerId) return;
+    if (!draggedId) { endDrag(); return; } // Normal click: allow the anchor's default action.
+    const bounds = grid.getBoundingClientRect();
+    const inside = event.clientX >= bounds.left && event.clientX <= bounds.right
+      && event.clientY >= bounds.top && event.clientY <= bounds.bottom;
+    if (!inside || !canSort()) { cancelDrag(); return; }
+    const source = draggedId;
+    const destination = previewAt(event.clientX, event.clientY);
+    endDrag();
+    move(source, destination, byId.get(source)!.querySelector<HTMLElement>('.card')!);
+  });
+  window.addEventListener('pointercancel', (event) => {
+    if (pending?.pointerId === event.pointerId) cancelDrag();
+  });
+  grid.addEventListener('lostpointercapture', (event) => {
+    if (pending?.pointerId === event.pointerId) cancelDrag();
+  });
+  window.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && pending) { event.preventDefault(); cancelDrag(); }
+  });
+  window.addEventListener('blur', cancelDrag);
+  window.addEventListener('resize', cancelDrag);
+  window.addEventListener('scroll', () => {
+    if (draggedId) previewAt(pointer.x, pointer.y);
+  }, { passive: true });
 
   resetButton.addEventListener('click', () => {
     endDrag();
@@ -318,25 +434,19 @@ const categories = [...new Set(sortedTools.map((tool) => tool.category))];
   document.getElementById('sort-toolbar')!.hidden = false;
 
   function render() {
+    endDrag();
     const q = searchInput.value.trim().toLowerCase();
     let visibleCount = 0;
-
     cards.forEach((card) => {
       const matchCat = activeCat === 'all' || card.dataset.category === activeCat;
-      const matchQuery =
-        !q ||
-        card.dataset.name!.includes(q) ||
-        card.dataset.desc!.includes(q);
+      const matchQuery = !q || card.dataset.name!.includes(q) || card.dataset.desc!.includes(q);
       const visible = matchCat && matchQuery;
       card.closest<HTMLElement>('.tool-item')!.style.display = visible ? '' : 'none';
       if (visible) visibleCount++;
     });
-
     empty.style.display = visibleCount ? 'none' : 'block';
-    endDrag();
     updateControls();
   }
-
   searchInput.addEventListener('input', render);
   tabs.forEach((tab) => {
     tab.addEventListener('click', () => {

@@ -16,6 +16,22 @@ export function moveItem(order, id, destination) {
   return next;
 }
 
+// Use stable grid slots rather than moving elements as targets: no hover oscillation.
+// Pick the nearest row first so the empty area of a short last row means its last slot.
+export function getDropIndex(slots, x, y) {
+  let index = -1, bestY = Infinity, bestX = Infinity;
+  slots.forEach((slot, i) => {
+    const dy = Math.max(slot.top - y, y - (slot.top + slot.height), 0);
+    const dx = Math.abs(x - (slot.left + slot.width / 2));
+    if (dy < bestY || (dy === bestY && dx < bestX)) {
+      index = i;
+      bestY = dy;
+      bestX = dx;
+    }
+  });
+  return index;
+}
+
 export function readOrder(storage) {
   try { return JSON.parse(storage?.getItem(ORDER_KEY) ?? 'null'); } catch { return null; }
 }

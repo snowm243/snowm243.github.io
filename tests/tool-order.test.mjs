@@ -1,8 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ORDER_KEY, mergeOrder, moveItem, readOrder, saveOrder, clearOrder } from '../src/lib/tool-order.mjs';
+import { ORDER_KEY, mergeOrder, moveItem, getDropIndex, readOrder, saveOrder, clearOrder } from '../src/lib/tool-order.mjs';
 
 const defaults = ['a', 'b', 'c'];
+test('drop slots use nearest row and column, including gaps and a short final row', () => {
+  const slots = [
+    { left: 0, top: 100, width: 200, height: 180 },
+    { left: 220, top: 100, width: 200, height: 180 },
+    { left: 0, top: 300, width: 200, height: 180 },
+  ];
+  assert.equal(getDropIndex(slots, 100, 190), 0);
+  assert.equal(getDropIndex(slots, 320, 190), 1);
+  assert.equal(getDropIndex(slots, 410, 390), 2);
+  assert.equal(getDropIndex(slots, 215, 190), 1);
+  assert.equal(getDropIndex(slots, 50, 295), 2);
+  assert.equal(getDropIndex([], 0, 0), -1);
+});
 const storage = () => {
   const values = new Map();
   return { getItem: (key) => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: (key) => values.delete(key) };
