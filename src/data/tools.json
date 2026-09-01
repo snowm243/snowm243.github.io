@@ -88,5 +88,16 @@
     "category": "学习工具",
     "status": "live",
     "order": 9
+  },
+  {
+    "name": "猫咪番茄钟",
+    "desc": "一只猫咪陪伴的轻量番茄钟，支持专注、短休息和长休息模式",
+    "url": "https://snowm243.github.io/cat-pomodoro/",
+    "icon": "🍅",
+    "color": "#fff1e6",
+    "category": "效率工具",
+    "status": "live",
+    "order": 10
   }
 ]
+
