@@ -6,6 +6,7 @@ Sandy Sun 的个人工具导航站。使用 Astro 构建，通过 GitHub Pages �
 
 - [上海工资计算器](https://snowm243.github.io/Payroll-Cal/)
 - [2026 学习日历](https://snowm243.github.io/study-calendar/)
+- [美国各州学习地图](https://us-states-study-map.sandy243.chatgpt.site/)
 
 ## 本地开发
 
